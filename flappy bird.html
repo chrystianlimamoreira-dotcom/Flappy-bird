@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flappy Bird</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #111;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: Arial, sans-serif;
+}
+
+#game {
+    position: relative;
+    width: min(100vw, 480px);
+    height: 100vh;
+    max-height: 800px;
+    overflow: hidden;
+    background: #65c9f5;
+    touch-action: none;
+    user-select: none;
+}
+
+canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#score {
+    position: absolute;
+    top: 20px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    color: white;
+    font-size: 54px;
+    font-weight: 900;
+    text-shadow:
+        3px 3px 0 #555,
+        0 6px 10px rgba(0,0,0,.4);
+    pointer-events: none;
+}
+
+#menu {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    text-align: center;
+    text-shadow: 3px 3px 0 #555;
+}
+
+#menu h1 {
+    font-size: clamp(38px, 10vw, 55px);
+    margin-bottom: 12px;
+}
+
+#menu p {
+    font-size: 18px;
+}
+
+button {
+    margin-top: 20px;
+    padding: 14px 30px;
+    border: none;
+    border-radius: 12px;
+    background: #ffd83d;
+    color: #654800;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow:
+        0 5px 0 #b88d0d,
+        0 8px 15px rgba(0,0,0,.3);
+}
+
+button:active {
+    transform: translateY(4px);
+    box-shadow: 0 1px 0 #b88d0d;
+}
+</style>
+</head>
+
+<body>
+
+<div id="game">
+
+    <canvas id="canvas"></canvas>
+
+    <div id="score">0</div>
+
+    <div id="menu">
+        <h1>FLAPPY BIRD</h1>
+        <p>Toque na tela para voar</p>
+        <button id="start">JOGAR</button>
+    </div>
+
+</div>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const game = document.getElementById("game");
+const scoreElement = document.getElementById("score");
+const menu = document.getElementById("menu");
+const startButton = document.getElementById("start");
+
+let W = 480;
+let H = 800;
+let dpr = 1;
+
+let playing = false;
+let gameOver = false;
+
+let score = 0;
+let lastTime = 0;
+let pipeTimer = 0;
+let worldTime = 0;
+
+const bird = {
+    x: 100,
+    y: 300,
+    radius: 17,
+    velocity: 0,
+    rotation: 0
+};
+
+let pipes = [];
+let particles = [];
+
+
+/* =========================
+   TAMANHO
+========================= */
+
+function resize() {
+
+    const rect = game.getBoundingClientRect();
+
+    W = rect.width;
+    H = rect.height;
+
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+
+    ctx.setTransform(
+        dpr, 0,
+        0, dpr,
+        0, 0
+    );
+
+    if (!playing) {
+        bird.y = H * .43;
+    }
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+
+/* =========================
+   COMEÇAR
+========================= */
+
+function startGame() {
+
+    score = 0;
+
+    scoreElement.textContent = "0";
+
+    pipes = [];
+    particles = [];
+
+    bird.x = W * .22;
+    bird.y = H * .43;
+    bird.velocity = 0;
+    bird.rotation = 0;
+
+    pipeTimer = 0;
+
+    playing = true;
+    gameOver = false;
+
+    menu.style.display = "none";
+
+    jump();
+
+    lastTime = performance.now();
+
+    requestAnimationFrame(gameLoop);
+}
+
+
+/* =========================
+   PULO
+========================= */
+
+function jump() {
+
+    if (!playing) return;
+
+    bird.velocity = -7.8;
+
+    for (let i = 0; i < 5; i++) {
+
+        particles.push({
+            x: bird.x - 12,
+            y: bird.y + 8,
+            vx: -1 - Math.random() * 2,
+            vy: (Math.random() - .5) * 2,
+            life: 20
+        });
+
+    }
+}
+
+
+/* =========================
+   CANOS
+========================= */
+
+function createPipe() {
+
+    const gap = Math.max(
+        145,
+        170 - score * .5
+    );
+
+    const minTop = 70;
+
+    const maxTop =
+        H - 190 - gap;
+
+    const top =
+        minTop +
+        Math.random() *
+        Math.max(10, maxTop - minTop);
+
+    pipes.push({
+        x: W + 30,
+        width: 70,
+        top: top,
+        bottom: top + gap,
+        passed: false
+    });
+}
+
+
+/* =========================
+   GAME OVER
+========================= */
+
+function endGame() {
+
+    if (!playing) return;
+
+    playing = false;
+    gameOver = true;
+
+    menu.innerHTML = `
+        <h1>GAME OVER</h1>
+        <p>Pontuação: ${score}</p>
+        <button id="restart">JOGAR NOVAMENTE</button>
+    `;
+
+    menu.style.display = "flex";
+
+    document
+        .getElementById("restart")
+        .addEventListener("pointerdown", function(e) {
+
+            e.preventDefault();
+
+            startGame();
+
+        });
+}
+
+
+/* =========================
+   ATUALIZAÇÃO
+========================= */
+
+function update(dt) {
+
+    const scale =
+        Math.min(dt / 16.67, 1.5);
+
+    worldTime += dt;
+
+    /* Física */
+
+    bird.velocity += .43 * scale;
+
+    bird.y +=
+        bird.velocity * scale;
+
+    bird.rotation =
+        Math.max(
+            -.55,
+            Math.min(
+                1.15,
+                bird.velocity * .075
+            )
+        );
+
+
+    /* Canos */
+
+    pipeTimer += dt;
+
+    if (pipeTimer >= 1400) {
+
+        pipeTimer = 0;
+
+        createPipe();
+    }
+
+
+    const speed =
+        3.2 +
+        Math.min(score * .025, 1.8);
+
+
+    for (const pipe of pipes) {
+
+        pipe.x -= speed * scale;
+
+
+        /* Pontuação */
+
+        if (
+            !pipe.passed &&
+            pipe.x + pipe.width < bird.x
+        ) {
+
+            pipe.passed = true;
+
+            score++;
+
+            scoreElement.textContent =
+                score;
+        }
+
+
+        /* Colisão */
+
+        const hitX =
+            bird.x + bird.radius > pipe.x &&
+            bird.x - bird.radius <
+                pipe.x + pipe.width;
+
+        const hitY =
+            bird.y - bird.radius < pipe.top ||
+            bird.y + bird.radius > pipe.bottom;
+
+
+        if (hitX && hitY) {
+
+            endGame();
+        }
+    }
+
+
+    pipes =
+        pipes.filter(
+            pipe => pipe.x + pipe.width > -30
+        );
+
+
+    /* Chão / teto */
+
+    if (
+        bird.y - bird.radius < 0 ||
+        bird.y + bird.radius > H - 48
+    ) {
+
+        endGame();
+    }
+
+
+    /* Partículas */
+
+    for (const p of particles) {
+
+        p.x += p.vx * scale;
+        p.y += p.vy * scale;
+
+        p.life -= scale;
+    }
+
+    particles =
+        particles.filter(
+            p => p.life > 0
+        );
+}
+
+
+/* =========================
+   MONTANHAS
+========================= */
+
+function drawMountains() {
+
+    /*
+       Montanha distante
+    */
+
+    ctx.fillStyle = "#86c879";
+
+    ctx.beginPath();
+
+    ctx.moveTo(0, H - 48);
+
+    const offset1 =
+        (worldTime * .015) % 180;
+
+    for (
+        let x = -180 - offset1;
+        x < W + 200;
+        x += 180
+    ) {
+
+        ctx.lineTo(x + 90, H - 210);
+        ctx.lineTo(x + 180, H - 48);
+    }
+
+    ctx.lineTo(W, H - 48);
+
+    ctx.closePath();
+
+    ctx.fill();
+
+
+    /*
+       Montanha mais próxima
+    */
+
+    ctx.fillStyle = "#579d62";
+
+    ctx.beginPath();
+
+    ctx.moveTo(0, H - 48);
+
+    const offset2 =
+        (worldTime * .035) % 220;
+
+    for (
+        let x = -220 - offset2;
+        x < W + 240;
+        x += 220
+    ) {
+
+        ctx.lineTo(x + 110, H - 160);
+        ctx.lineTo(x + 220, H - 48);
+    }
+
+    ctx.lineTo(W, H - 48);
+
+    ctx.closePath();
+
+    ctx.fill();
+
+
+    /*
+       Neve no topo
+    */
+
+    ctx.fillStyle = "#e8f5df";
+
+    ctx.beginPath();
+
+    for (
+        let x = -220 - offset2;
+        x < W + 240;
+        x += 220
+    ) {
+
+        ctx.moveTo(x + 110, H - 160);
+
+        ctx.lineTo(x + 92, H - 139);
+        ctx.lineTo(x + 110, H - 150);
+        ctx.lineTo(x + 125, H - 135);
+        ctx.lineTo(x + 110, H - 160);
+    }
+
+    ctx.fill();
+}
+
+
+/* =========================
+   FUNDO
+========================= */
+
+function drawBackground() {
+
+    const gradient =
+        ctx.createLinearGradient(
+            0,
+            0,
+            0,
+            H
+        );
+
+    gradient.addColorStop(
+        0,
+        "#43bdf3"
+    );
+
+    gradient.addColorStop(
+        .65,
+        "#a9eaff"
+    );
+
+    gradient.addColorStop(
+        1,
+        "#e4f9ff"
+    );
+
+    ctx.fillStyle = gradient;
+
+    ctx.fillRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+
+    /* Sol */
+
+    ctx.fillStyle = "#fff4a8";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        W - 75,
+        90,
+        35,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    /* Nuvens */
+
+    ctx.fillStyle = "#ffffff55";
+
+    for (let i = 0; i < 5; i++) {
+
+        const x =
+            ((i * 150 -
+                worldTime * .018)
+                % (W + 200))
+            - 100;
+
+        const y =
+            80 + (i % 3) * 80;
+
+
+        ctx.beginPath();
+
+        ctx.arc(
+            x,
+            y,
+            22,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.arc(
+            x + 28,
+            y - 9,
+            30,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.arc(
+            x + 60,
+            y,
+            22,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+
+
+    drawMountains();
+
+
+    /* Chão */
+
+    ctx.fillStyle = "#82d23c";
+
+    ctx.fillRect(
+        0,
+        H - 48,
+        W,
+        48
+    );
+
+
+    ctx.fillStyle = "#5cae2d";
+
+    const groundOffset =
+        (worldTime * .12) % 30;
+
+    for (
+        let x = -30 - groundOffset;
+        x < W + 30;
+        x += 30
+    ) {
+
+        ctx.fillRect(
+            x,
+            H - 48,
+            15,
+            7
+        );
+    }
+
+
+    ctx.fillStyle = "#e6d894";
+
+    ctx.fillRect(
+        0,
+        H - 8,
+        W,
+        8
+    );
+}
+
+
+/* =========================
+   CANOS
+========================= */
+
+function drawPipe(pipe) {
+
+    const x = pipe.x;
+    const w = pipe.width;
+
+
+    /* Sombra */
+
+    ctx.save();
+
+    ctx.shadowColor =
+        "rgba(0,0,0,.38)";
+
+    ctx.shadowBlur = 9;
+
+    ctx.shadowOffsetX = 6;
+
+    ctx.shadowOffsetY = 5;
+
+
+    /* Gradiente */
+
+    const gradient =
+        ctx.createLinearGradient(
+            x,
+            0,
+            x + w,
+            0
+        );
+
+    gradient.addColorStop(
+        0,
+        "#126f1d"
+    );
+
+    gradient.addColorStop(
+        .28,
+        "#52d45b"
+    );
+
+    gradient.addColorStop(
+        .65,
+        "#2bab38"
+    );
+
+    gradient.addColorStop(
+        1,
+        "#0d5d18"
+    );
+
+
+    ctx.fillStyle = gradient;
+
+
+    /* Cano de cima */
+
+    ctx.fillRect(
+        x,
+        0,
+        w,
+        pipe.top
+    );
+
+
+    /* Cano de baixo */
+
+    ctx.fillRect(
+        x,
+        pipe.bottom,
+        w,
+        Math.max(0, H - pipe.bottom - 48)
+    );
+
+
+    ctx.restore();
+
+
+    /* Bordas */
+
+    ctx.fillStyle = "#23952e";
+
+    ctx.fillRect(
+        x - 7,
+        pipe.top - 20,
+        w + 14,
+        20
+    );
+
+    ctx.fillRect(
+        x - 7,
+        pipe.bottom,
+        w + 14,
+        20
+    );
+
+
+    /* Brilho */
+
+    ctx.fillStyle = "#ffffff40";
+
+    ctx.fillRect(
+        x + 10,
+        0,
+        9,
+        pipe.top - 20
+    );
+
+    ctx.fillRect(
+        x + 10,
+        pipe.bottom + 20,
+        9,
+        Math.max(0, H - pipe.bottom - 68)
+    );
+
+
+    /* Linha escura */
+
+    ctx.fillStyle = "#095b16";
+
+    ctx.fillRect(
+        x + w - 7,
+        0,
+        7,
+        pipe.top
+    );
+
+    ctx.fillRect(
+        x + w - 7,
+        pipe.bottom + 20,
+        7,
+        Math.max(0, H - pipe.bottom - 68)
+    );
+}
+
+
+/* =========================
+   PASSARINHO
+========================= */
+
+function drawBird() {
+
+    ctx.save();
+
+    ctx.translate(
+        bird.x,
+        bird.y
+    );
+
+    ctx.rotate(
+        bird.rotation
+    );
+
+
+    /* Sombra */
+
+    ctx.shadowColor =
+        "rgba(0,0,0,.35)";
+
+    ctx.shadowBlur = 8;
+
+    ctx.shadowOffsetY = 5;
+
+
+    /* Corpo */
+
+    const body =
+        ctx.createRadialGradient(
+            -6,
+            -7,
+            2,
+            0,
+            0,
+            23
+        );
+
+    body.addColorStop(
+        0,
+        "#fff36b"
+    );
+
+    body.addColorStop(
+        .55,
+        "#ffd52a"
+    );
+
+    body.addColorStop(
+        1,
+        "#df9e00"
+    );
+
+    ctx.fillStyle = body;
+
+    ctx.beginPath();
+
+    ctx.arc(
+        0,
+        0,
+        bird.radius,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    ctx.shadowColor =
+        "transparent";
+
+
+    /* Asa */
+
+    ctx.fillStyle = "#e1a800";
+
+    ctx.beginPath();
+
+    ctx.ellipse(
+        -6,
+        7,
+        12,
+        7,
+        .3,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    /* Olho */
+
+    ctx.fillStyle = "white";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        7,
+        -8,
+        7,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    ctx.fillStyle = "#111";
+
+    ctx.beginPath();
+
+    ctx.arc(
+        9,
+        -8,
+        3,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fill();
+
+
+    /* Bico */
+
+    ctx.fillStyle = "#f07818";
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        14,
+        -2
+    );
+
+    ctx.lineTo(
+        31,
+        4
+    );
+
+    ctx.lineTo(
+        14,
+        9
+    );
+
+    ctx.closePath();
+
+    ctx.fill();
+
+
+    ctx.restore();
+}
+
+
+/* =========================
+   PARTÍCULAS
+========================= */
+
+function drawParticles() {
+
+    for (const p of particles) {
+
+        ctx.globalAlpha =
+            p.life / 20;
+
+        ctx.fillStyle =
+            "#fff2a0";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            p.x,
+            p.y,
+            3,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+
+    ctx.globalAlpha = 1;
+}
+
+
+/* =========================
+   DESENHO
+========================= */
+
+function draw() {
+
+    ctx.clearRect(
+        0,
+        0,
+        W,
+        H
+    );
+
+    drawBackground();
+
+    for (const pipe of pipes) {
+        drawPipe(pipe);
+    }
+
+    drawParticles();
+
+    drawBird();
+}
+
+
+/* =========================
+   LOOP
+========================= */
+
+function gameLoop(time) {
+
+    if (!playing) {
+
+        draw();
+
+        return;
+    }
+
+
+    const dt =
+        Math.min(
+            time - lastTime,
+            32
+        );
+
+    lastTime = time;
+
+    update(dt);
+
+    draw();
+
+    if (playing) {
+        requestAnimationFrame(gameLoop);
+    }
+}
+
+
+/* =========================
+   CONTROLES
+   TOQUE IMEDIATO
+========================= */
+
+game.addEventListener(
+    "pointerdown",
+    function(event) {
+
+        event.preventDefault();
+
+        if (
+            event.target === startButton ||
+            event.target.tagName === "BUTTON"
+        ) {
+            return;
+        }
+
+        if (playing) {
+            jump();
+        }
+
+    },
+    {
+        passive: false
+    }
+);
+
+
+/* Botão */
+
+startButton.addEventListener(
+    "pointerdown",
+    function(event) {
+
+        event.preventDefault();
+
+        startGame();
+
+    },
+    {
+        passive: false
+    }
+);
+
+
+/* Teclado */
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (
+            event.code === "Space" ||
+            event.code === "ArrowUp"
+        ) {
+
+            event.preventDefault();
+
+            if (playing) {
+
+                jump();
+
+            } else if (!gameOver) {
+
+                startGame();
+
+            }
+        }
+    }
+);
+
+
+/* Evita atraso do toque no celular */
+
+game.addEventListener(
+    "touchstart",
+    function(event) {
+        event.preventDefault();
+    },
+    {
+        passive: false
+    }
+);
+
+
+/* Primeiro desenho */
+
+draw();
+
+</script>
+
+</body>
+</html>
